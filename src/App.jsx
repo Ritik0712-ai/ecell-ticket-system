@@ -3,8 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
-  onAuthStateChanged,
-  signInWithCustomToken 
+  onAuthStateChanged 
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -26,18 +25,9 @@ import {
   Mail
 } from 'lucide-react';
 
-/* ==================================================================
- * 🚨 CRITICAL DEPLOYMENT INSTRUCTIONS (READ CAREFULLY) 🚨
- * ==================================================================
- * * STEP 1: Copy this entire file to your GitHub 'src/App.jsx'.
- * * STEP 2: BEFORE COMMITTING, you must SWAP the configuration below.
- * 1. UNCOMMENT the "VERCEL CONFIG" block.
- * 2. DELETE or COMMENT OUT the "SANDBOX CONFIG" block.
- * * If you do not do this, the app will fail on Vercel.
- * ================================================================== */
-
-/* --- [1] VERCEL CONFIG (Uncomment this for GitHub/Vercel) --- */
-/*
+/* ------------------------------------------------------------------
+ * PRODUCTION CONFIGURATION (VERCEL)
+ * ------------------------------------------------------------------ */
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_API_KEY,
   authDomain: import.meta.env.VITE_AUTH_DOMAIN,
@@ -46,23 +36,13 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_APP_ID
 };
+
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = "production_app"; // You can use a static string here
-*/
 
-/* --- [2] SANDBOX CONFIG (Works in this Preview Window ONLY) --- */
-/* --- DELETE THIS BLOCK WHEN MOVING TO GITHUB --- */
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const appId = rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_');
-
-
-// SECRET SALT 
+// SECRET SALT (For signature generation)
 const SECRET_SALT = "E-CELL-PRODUCTION-SECRET"; 
 
 // --- Utilities ---
@@ -108,15 +88,9 @@ export default function TicketSystem() {
 
   // Auth
   useEffect(() => {
-    // Modified auth to work in both Sandbox and Vercel (if anon enabled)
-    const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
-      }
-    };
-    initAuth().catch(console.error);
+    signInAnonymously(auth).catch((err) => {
+      console.error("Auth Failed:", err);
+    });
     
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -129,10 +103,9 @@ export default function TicketSystem() {
   useEffect(() => {
     if (!user) return;
     
-    // NOTE: This path is set up for the Sandbox. 
-    // FOR VERCEL: Change this to `collection(db, 'tickets')` 
-    // and make sure your Firestore Rules allow read/write to 'tickets'.
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'tickets'));
+    // PRODUCTION PATH: Using a simple 'tickets' collection.
+    // Ensure your Firestore Database is created in the Firebase Console.
+    const q = query(collection(db, 'tickets'));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const t = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -161,14 +134,14 @@ export default function TicketSystem() {
         issuedBy: user.uid
       };
 
-      const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tickets'), ticketData);
+      const docRef = await addDoc(collection(db, 'tickets'), ticketData);
       
       setNewParticipant({ name: '', email: '', type: 'Standard' });
       setSelectedTicket({ id: docRef.id, ...ticketData });
 
     } catch (error) {
       console.error("Creation failed", error);
-      alert("Error creating ticket. Check console/permissions.");
+      alert("Error creating ticket. Check console for details.");
     } finally {
       setIsSubmitting(false);
     }
@@ -210,7 +183,7 @@ export default function TicketSystem() {
       const expectedSignature = generateSignature({ id });
       if (signature !== expectedSignature) throw new Error("Invalid Signature");
 
-      const ticketRef = doc(db, 'artifacts', appId, 'public', 'data', 'tickets', id);
+      const ticketRef = doc(db, 'tickets', id);
       const ticketSnap = await getDoc(ticketRef);
 
       if (!ticketSnap.exists()) throw new Error("Ticket ID not found");
